@@ -58,6 +58,7 @@
             Controls.Add(txtLogs);
             Name = "Server";
             Text = "Form1";
+            Load += Server_Load_1;
             ResumeLayout(false);
             PerformLayout();
         }

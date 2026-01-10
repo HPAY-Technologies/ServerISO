@@ -1,11 +1,12 @@
-﻿using System;
-using System.Linq;
+﻿using Iso8583;
+using System;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace ServerApp
@@ -15,18 +16,25 @@ namespace ServerApp
         private TcpListener server;
         private X509Certificate2 certificate;
 
-        private readonly IPAddress SERVER_IP = IPAddress.Parse("192.168.1.9");
         private const int SERVER_PORT = 5000;
+        private readonly IPAddress SERVER_IP = IPAddress.Any;
 
         public Server()
         {
             InitializeComponent();
             Load += Server_Load;
+            FormClosing += Server_FormClosing;
         }
 
+        // ▶️ AUTO START
         private void Server_Load(object sender, EventArgs e)
         {
             StartServer();
+        }
+
+        private void Server_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            server?.Stop();
         }
 
         private void StartServer()
@@ -36,37 +44,54 @@ namespace ServerApp
                 certificate = LoadCertificate();
                 if (certificate == null)
                 {
-                    txtLogs.AppendText("❌ Certificat SSL introuvable\r\n");
+                    Log("❌ Certificat SSL introuvable");
                     return;
                 }
 
                 server = new TcpListener(SERVER_IP, SERVER_PORT);
                 server.Start();
 
-                txtLogs.AppendText("🔐 SERVEUR SSL TLS 1.2 DÉMARRÉ\r\n");
-                txtLogs.AppendText($"📡 IP : {SERVER_IP} | PORT : {SERVER_PORT}\r\n");
-                txtLogs.AppendText("📜 Certificat : " + certificate.Subject + "\r\n");
+                Log("🔐 SERVEUR ISO8583 TLS 1.2 DÉMARRÉ");
+                Log($"📡 Écoute sur 0.0.0.0:{SERVER_PORT}");
+                Log($"📜 Certificat : {certificate.Subject}");
+                Log("⏳ En attente de clients...\n");
 
                 server.BeginAcceptTcpClient(OnClientConnect, null);
             }
             catch (Exception ex)
             {
-                txtLogs.AppendText("❌ Erreur démarrage : " + ex.Message + "\r\n");
+                Log("❌ Erreur démarrage : " + ex.Message);
             }
         }
 
         private void OnClientConnect(IAsyncResult ar)
         {
             TcpClient client = null;
-            SslStream sslStream = null;
 
             try
             {
                 client = server.EndAcceptTcpClient(ar);
                 server.BeginAcceptTcpClient(OnClientConnect, null);
 
-                Invoke(() => txtLogs.AppendText("🔌 Client connecté\r\n"));
+                Log("🔌 Client connecté");
 
+                Thread t = new Thread(() => HandleClient(client));
+                t.IsBackground = true;
+                t.Start();
+            }
+            catch (Exception ex)
+            {
+                Log("❌ Erreur accept client : " + ex.Message);
+                client?.Close();
+            }
+        }
+
+        private void HandleClient(TcpClient client)
+        {
+            SslStream sslStream = null;
+
+            try
+            {
                 sslStream = new SslStream(client.GetStream(), false);
 
                 sslStream.AuthenticateAsServer(
@@ -76,68 +101,47 @@ namespace ServerApp
                     false
                 );
 
-                Invoke(() =>
-                {
-                    txtLogs.AppendText("🔐 SSL ÉTABLI\r\n");
-                    txtLogs.AppendText("➡️ Protocole : " + sslStream.SslProtocol + "\r\n");
-                });
+                Log($"🔐 SSL établi | {sslStream.SslProtocol}");
 
-                byte[] buffer = new byte[2048];
+                byte[] buffer = new byte[4096];
 
                 while (client.Connected)
                 {
-                    int bytes = sslStream.Read(buffer, 0, buffer.Length);
-                    if (bytes <= 0) break;
+                    int bytesRead = sslStream.Read(buffer, 0, buffer.Length);
+                    if (bytesRead <= 0) break;
 
-                    string request = Encoding.ASCII.GetString(buffer, 0, bytes).Trim();
-                    Invoke(() => txtLogs.AppendText("📩 Reçu → " + request + "\r\n"));
+                    string rawIso = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+                    Log("📩 ISO Reçu → " + rawIso);
 
-                    string responseCode = "00";
-                    string message = "APPROVED";
+                    IsoMessage request = IsoParser.Parse(rawIso);
 
-                    string[] parts = request.Split('|');
+       
+                    string isoResponse = IsoResponseGenerator.GenerateResponse(request);
 
-                    if (!request.StartsWith("0200|") || parts.Length != 5)
-                    {
-                        responseCode = "30";
-                        message = "FORMAT ERROR";
-                    }
-                    else if (!parts[1].All(char.IsDigit) || parts[1].Length < 13)
-                    {
-                        responseCode = "14";
-                        message = "INVALID PAN";
-                    }
-                    else if (!parts[3].All(char.IsDigit))
-                    {
-                        responseCode = "13";
-                        message = "INVALID AMOUNT";
-                    }
-
-                    string response = $"0210|{responseCode}|{message}";
-                    byte[] respBytes = Encoding.ASCII.GetBytes(response);
-
+                    byte[] respBytes = Encoding.ASCII.GetBytes(isoResponse);
                     sslStream.Write(respBytes);
                     sslStream.Flush();
 
-                    Invoke(() => txtLogs.AppendText("📤 Réponse → " + response + "\r\n"));
+                    Log("📤 ISO Réponse → " + isoResponse);
                 }
             }
             catch (AuthenticationException)
             {
-                Invoke(() => txtLogs.AppendText("❌ CLIENT NON SSL REJETÉ\r\n"));
+                Log("❌ CLIENT NON SSL REJETÉ");
             }
             catch (Exception ex)
             {
-                Invoke(() => txtLogs.AppendText("❌ Erreur serveur : " + ex.Message + "\r\n"));
+                Log("❌ Erreur client : " + ex.Message);
             }
             finally
             {
                 sslStream?.Close();
                 client?.Close();
-                Invoke(() => txtLogs.AppendText("🔌 Client déconnecté\r\n"));
+                Log("🔌 Client déconnecté\n");
             }
         }
 
+        
         private X509Certificate2 LoadCertificate()
         {
             using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
@@ -150,6 +154,15 @@ namespace ServerApp
             );
 
             return certs.Count > 0 ? certs[0] : null;
+        }
+
+        // 📝 LOG SAFE UI
+        private void Log(string msg)
+        {
+            Invoke(new Action(() =>
+            {
+                txtLogs.AppendText(msg + Environment.NewLine);
+            }));
         }
     }
 }
