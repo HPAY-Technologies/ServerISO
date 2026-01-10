@@ -1,167 +1,125 @@
-# 🔐 ServerISO – Serveur TLS 1.2 pour Trames de Paiement
+💳 ServerISO – Serveur ISO8583 sécurisé (TLS)
+📌 Présentation
 
-## 📌 Présentation
+ServerISO est un serveur de paiement simulé implémentant le standard ISO 8583, utilisé dans les systèmes de paiement électroniques (cartes bancaires, switchs, POS, ATM).
 
-**ServerISO** est une application serveur développée en **C# (.NET / WinForms)** implémentant un **serveur TCP sécurisé via TLS 1.2**.
+Le projet fournit :
 
-Il permet de recevoir, valider et traiter des **trames de paiement inspirées du standard ISO 8583**, puis de retourner une réponse normalisée.
+🔐 Un serveur TCP sécurisé en TLS 1.2
 
-Le serveur est conçu pour :
+🧠 Un moteur ISO8583 custom (parser, packer, bitmap, MAC)
 
-* être accessible **en local ou via Internet**
-* garantir la **sécurité des échanges (TLS 1.2)**
-* simuler un **serveur d’autorisation de paiement**
+🔁 Une génération automatique de réponses ISO
 
----
+🧪 Un environnement idéal pour tests des flux de paiement
 
-## 🎯 Objectifs du projet
+🏗️ Architecture du projet
+PaiementApp/
+│
+├── ServerApp/
+│   ├── Iso8583/
+│   │   ├── FieldType.cs              # Types de champs ISO (FIXED, LLVAR, LLLVAR)
+│   │   ├── IsoBitmap.cs              # Gestion du bitmap primaire
+│   │   ├── IsoFieldSpec.cs           # Définition des champs ISO
+│   │   ├── IsoMac.cs                 # Calcul du MAC (Message Authentication Code)
+│   │   ├── IsoMessage.cs             # Modèle du message ISO8583
+│   │   ├── IsoPacker.cs              # Construction du message ISO
+│   │   ├── IsoParser.cs              # Parsing du message ISO entrant
+│   │   └── IsoResponseGenerator.cs   # Génération des réponses ISO (0210, etc.)
+│   │
+│   ├── Server.cs                     # Serveur TCP + TLS + logique ISO
+│   ├── Program.cs                    # Point d’entrée de l’application
+│   └── Server.Designer.cs            # UI WinForms
+│
+├── .gitignore
+└── README.md
+🔐 Sécurité
 
-* Implémenter un **handshake TLS 1.2 sécurisé**
-* Traiter des trames de paiement structurées
-* Valider les champs (PAN, montant, format)
-* Retourner des codes réponse ISO
-* Être testable via **OpenSSL, curl, Hercules, mobile, etc.**
+Communication sécurisée via SSL/TLS 1.2
 
----
+Certificat X509 chargé depuis le Windows Certificate Store
 
-## 🧱 Architecture
+Rejet automatique des clients non sécurisés
 
-```
-Client (Mobile / OpenSSL / App)
-        |
-        | TLS 1.2
-        v
-┌─────────────────────────┐
-│      ServerISO          │
-│  TCPListener + SslStream│
-└─────────────────────────┘
-```
+🔄 Fonctionnement global
+1️⃣ Démarrage du serveur
 
----
+Écoute sur le port 5000
 
-## 🛠️ Technologies utilisées
+TLS 1.2 activé
 
-* C# .NET (WinForms)
-* TcpListener / TcpClient
-* SslStream
-* TLS 1.2
-* X509Certificate2
-* OpenSSL (tests)
-* Git / GitHub
+Attente des connexions clientes
 
----
+🔐 SERVEUR SSL TLS 1.2 DÉMARRÉ
+📡 Écoute sur 0.0.0.0:5000
 
-## 🚀 Démarrage du serveur
+2️⃣ Réception du message ISO8583
 
-### 🔹 Configuration réseau
+Le message ISO est reçu via TCP sécurisé
 
-* **IP locale** : `192.168.1.9`
-* **Port** : `5000`
-* **Protocole** : TCP
-* **Sécurité** : TLS 1.2 uniquement
+Il est parsé par IsoParser
 
-Le serveur démarre automatiquement à l’exécution de l’application.
+Les champs sont extraits grâce au bitmap
 
----
+3️⃣ Traitement métier
 
-## 🔐 Certificat TLS
+Vérification des champs obligatoires
 
-* Certificat **auto-signé**
-* Stocké dans :
+Génération du MTI de réponse
 
-```
-Certificats → Ordinateur local → Personnel
-```
+Génération automatique de :
 
-* Subject attendu :
+Response Code (field 39)
 
-```
-CN=localhost
-```
+RRN (field 37)
 
-⚠️ En production, utiliser un certificat signé par une autorité reconnue.
+Date / Heure
 
----
+MAC (field 64)
 
-## 📡 Format des trames
+4️⃣ Envoi de la réponse ISO
 
-### 📥 Requête (exemple)
+Construction du message avec IsoPacker
 
-```
-0200|4000001234567890|000000|000000010000|123456
-```
+Envoi au client via le canal TLS
+Tests
+Test TLS avec OpenSSL
+openssl s_client -connect localhost:5000 -tls1_2
 
-| Champ           | Description            |
-| --------------- | ---------------------- |
-| 0200            | Message Type Indicator |
-| PAN             | Numéro de carte        |
-| Processing Code | Code traitement        |
-| Amount          | Montant                |
-| STAN            | Numéro de transaction  |
+Scénarios couverts
 
----
+✅ Transaction approuvée
 
-### 📤 Réponse
+❌ PAN invalide
 
-```
-0210|00|APPROVED
-```
+❌ Montant invalide
 
-| Code | Signification  |
-| ---- | -------------- |
-| 00   | APPROVED       |
-| 13   | INVALID AMOUNT |
-| 14   | INVALID PAN    |
-| 30   | FORMAT ERROR   |
+❌ Format ISO incorrect
 
----
+❌ MTI non supporté
 
-## 🧠 Règles de validation
+🧩 Champs ISO supportés
+Champ	Description
+2	PAN
+3	Processing Code
+4	Amount
+7	Transmission DateTime
+11	STAN
+12	Local Time
+13	Local Date
+37	RRN
+39	Response Code
+41	Terminal ID
+49	Currency
+64	MAC
+🚀 Technologies utilisées
 
-* MTI doit commencer par `0200`
-* PAN numérique ≥ 13 chiffres
-* Montant numérique
-* Structure exacte en 5 champs
+C# (.NET)
 
----
+TCP / SSLStream
 
-## 🔒 Sécurité réseau
+ISO 8583
 
-### Autoriser le port (Windows)
+WinForms
 
-```powershell
-netsh advfirewall firewall add rule name="TLS Server 5000" dir=in action=allow protocol=TCP localport=5000
-```
-
-### Accès public (Internet)
-
-1. Récupérer l’IP publique
-
-```bash
-curl https://api.ipify.org
-```
-
-2. Configurer le **Port Forwarding** sur le routeur
-
-```
-Port externe : 5000
-IP interne   : 192.168.1.9
-Port interne : 5000
-Protocole    : TCP
-```
-
----
-
-## 🧪 Tests avec OpenSSL
-
-```bash
-openssl s_client -connect IP_PUBLIQUE:5000 -tls1_2
-```
-
-Handshake attendu :
-
-* TLSv1.2
-* Cipher sécurisé (AES-GCM)
-* Certificat serveur affiché
-
----
+OpenSSL (tests)
