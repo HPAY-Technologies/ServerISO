@@ -1,125 +1,106 @@
-💳 ServerISO – Serveur ISO8583 sécurisé (TLS)
-📌 Présentation
+# ServerISO – Serveur ISO8583 sécurisé (TLS)
 
-ServerISO est un serveur de paiement simulé implémentant le standard ISO 8583, utilisé dans les systèmes de paiement électroniques (cartes bancaires, switchs, POS, ATM).
+## Présentation
 
-Le projet fournit :
+ServerISO est un serveur de paiement simulé implémentant le standard ISO 8583, utilisé dans les systèmes de paiement électroniques (cartes bancaires, POS, ATM et switchs de paiement).  
+Le projet a pour objectif de fournir une plateforme de test des flux de paiement, du format ISO8583 et des communications sécurisées.
 
-🔐 Un serveur TCP sécurisé en TLS 1.2
+Le serveur permet de recevoir des messages ISO8583 via une connexion TCP sécurisée (TLS), de les parser, de les traiter, puis de générer automatiquement une réponse ISO conforme.
 
-🧠 Un moteur ISO8583 custom (parser, packer, bitmap, MAC)
+---
 
-🔁 Une génération automatique de réponses ISO
+## Architecture du projet
 
-🧪 Un environnement idéal pour tests des flux de paiement
+Le projet est structuré autour d’un serveur principal et d’un moteur ISO8583 développé sur mesure.
 
-🏗️ Architecture du projet
-PaiementApp/
-│
-├── ServerApp/
-│   ├── Iso8583/
-│   │   ├── FieldType.cs              # Types de champs ISO (FIXED, LLVAR, LLLVAR)
-│   │   ├── IsoBitmap.cs              # Gestion du bitmap primaire
-│   │   ├── IsoFieldSpec.cs           # Définition des champs ISO
-│   │   ├── IsoMac.cs                 # Calcul du MAC (Message Authentication Code)
-│   │   ├── IsoMessage.cs             # Modèle du message ISO8583
-│   │   ├── IsoPacker.cs              # Construction du message ISO
-│   │   ├── IsoParser.cs              # Parsing du message ISO entrant
-│   │   └── IsoResponseGenerator.cs   # Génération des réponses ISO (0210, etc.)
-│   │
-│   ├── Server.cs                     # Serveur TCP + TLS + logique ISO
-│   ├── Program.cs                    # Point d’entrée de l’application
-│   └── Server.Designer.cs            # UI WinForms
-│
-├── .gitignore
-└── README.md
-🔐 Sécurité
+- ServerApp  
+  - Iso8583  
+    - FieldType.cs : définition des types de champs ISO (FIXED, LLVAR, LLLVAR)  
+    - IsoBitmap.cs : gestion du bitmap primaire  
+    - IsoFieldSpec.cs : spécification des champs ISO8583  
+    - IsoMac.cs : génération et vérification du MAC  
+    - IsoMessage.cs : représentation d’un message ISO8583  
+    - IsoPacker.cs : construction des messages ISO8583  
+    - IsoParser.cs : parsing des messages ISO8583 entrants  
+    - IsoResponseGenerator.cs : génération des réponses ISO (ex : 0210)  
+  - Server.cs : serveur TCP sécurisé et logique métier ISO  
+  - Program.cs : point d’entrée de l’application  
+  - Server.Designer.cs : interface WinForms  
 
-Communication sécurisée via SSL/TLS 1.2
+---
 
-Certificat X509 chargé depuis le Windows Certificate Store
+## Sécurité
 
-Rejet automatique des clients non sécurisés
+La communication entre le client et le serveur est sécurisée via SSL/TLS 1.2.  
+Le serveur utilise un certificat X509 chargé depuis le magasin de certificats Windows et rejette toute connexion non sécurisée.
 
-🔄 Fonctionnement global
-1️⃣ Démarrage du serveur
+---
 
-Écoute sur le port 5000
+## Fonctionnement du projet
 
-TLS 1.2 activé
+Au démarrage, le serveur écoute sur un port TCP (par défaut 5000) et attend des connexions clientes sécurisées.  
+Lorsqu’un client se connecte, un handshake TLS est effectué. Une fois la connexion sécurisée établie, le serveur peut recevoir des messages ISO8583.
 
-Attente des connexions clientes
+Le message ISO reçu est analysé par le parser ISO8583 qui :
+- lit le MTI
+- interprète le bitmap
+- extrait les champs présents
 
-🔐 SERVEUR SSL TLS 1.2 DÉMARRÉ
-📡 Écoute sur 0.0.0.0:5000
+Les données extraites sont ensuite traitées par la logique métier.  
+En fonction du type de message (ex : MTI 0200), le serveur génère une réponse appropriée (ex : MTI 0210) en ajoutant les champs nécessaires comme le code réponse, le RRN, la date/heure et le MAC.
 
-2️⃣ Réception du message ISO8583
+La réponse ISO8583 est ensuite construite par le packer et envoyée au client via la connexion TLS.
 
-Le message ISO est reçu via TCP sécurisé
+---
 
-Il est parsé par IsoParser
+## Flux ISO8583
 
-Les champs sont extraits grâce au bitmap
+Exemple de flux :
+- Message entrant : 0200 (transaction financière)
+- Message sortant : 0210 (réponse à la transaction)
 
-3️⃣ Traitement métier
+---
 
-Vérification des champs obligatoires
+## Champs ISO supportés
 
-Génération du MTI de réponse
+Le projet supporte notamment les champs suivants :
+- Champ 2 : PAN  
+- Champ 3 : Processing Code  
+- Champ 4 : Amount  
+- Champ 7 : Transmission Date & Time  
+- Champ 11 : STAN  
+- Champ 12 : Local Time  
+- Champ 13 : Local Date  
+- Champ 37 : RRN  
+- Champ 39 : Response Code  
+- Champ 41 : Terminal ID  
+- Champ 49 : Currency Code  
+- Champ 64 : MAC  
 
-Génération automatique de :
+---
 
-Response Code (field 39)
+## Tests
 
-RRN (field 37)
+Le serveur peut être testé à l’aide d’outils comme OpenSSL pour vérifier la connexion TLS.
 
-Date / Heure
-
-MAC (field 64)
-
-4️⃣ Envoi de la réponse ISO
-
-Construction du message avec IsoPacker
-
-Envoi au client via le canal TLS
-Tests
-Test TLS avec OpenSSL
+Exemple :
 openssl s_client -connect localhost:5000 -tls1_2
 
-Scénarios couverts
+Les scénarios de test incluent :
+- Transaction approuvée
+- PAN invalide
+- Montant invalide
+- Message ISO mal formé
+- MTI non supporté
 
-✅ Transaction approuvée
+---
 
-❌ PAN invalide
+## Technologies utilisées
 
-❌ Montant invalide
+- C# / .NET  
+- TCP & SSLStream  
+- ISO 8583  
+- WinForms  
+- OpenSSL pour les tests TLS  
 
-❌ Format ISO incorrect
-
-❌ MTI non supporté
-
-🧩 Champs ISO supportés
-Champ	Description
-2	PAN
-3	Processing Code
-4	Amount
-7	Transmission DateTime
-11	STAN
-12	Local Time
-13	Local Date
-37	RRN
-39	Response Code
-41	Terminal ID
-49	Currency
-64	MAC
-🚀 Technologies utilisées
-
-C# (.NET)
-
-TCP / SSLStream
-
-ISO 8583
-
-WinForms
-
-OpenSSL (tests)
+---
